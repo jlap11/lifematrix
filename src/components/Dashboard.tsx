@@ -16,10 +16,12 @@ import { ScoreCircle } from '@/components/ScoreCircle';
 import { FactorCard } from '@/components/FactorCard';
 import { MiniLineChart } from '@/components/MiniLineChart';
 import { LifeMatrixData } from '@/lib/types';
-import { createDefaultData, getCurrentMonthKey, formatMonthKey, validateLifeMatrixData, getAvailableMonthsFromData, createSafeDataShape } from '@/lib/data-utils';
+import { createDefaultData, getCurrentMonthKey, formatMonthKey, validateLifeMatrixData, getAvailableMonthsFromData, createSafeDataShape, normalizeIncomingData } from '@/lib/data-utils';
 import { validateLifeMatrixDataDetailed, buildExpectedShape } from '@/lib/validation';
 import { JsonDiffDialog } from '@/components/JsonDiffDialog';
+import { ImportStrategyDialog } from '@/components/ImportStrategyDialog';
 import { LifeMatrixCalculator } from '@/lib/calculator';
+import { PersistenceService } from '@/services/PersistenceService';
 import { 
   TrendingUp as TrendUp,
   TrendingDown as TrendDown,
@@ -29,6 +31,11 @@ import {
   Download,
   Upload
 } from 'lucide-react';
+import { AnnualDialog } from '@/components/AnnualDialog';
+import { ExportService } from '@/services/ExportService';
+import { MonthlyRecordForm } from '@/components/MonthlyRecordForm';
+import { FactorDetailsDialog } from '@/components/FactorDetailsDialog';
+import { SettingsDialog } from '@/components/SettingsDialog';
  
 
 export function Dashboard() {
@@ -43,6 +50,13 @@ export function Dashboard() {
   const [diffOpen, setDiffOpen] = useState(false);
   const [diffActual, setDiffActual] = useState<any>(null);
   const [diffReport, setDiffReport] = useState<any>(null);
+  const [importStrategyOpen, setImportStrategyOpen] = useState(false);
+  const importBufferRef = useRef<any>(null);
+  const [annualOpen, setAnnualOpen] = useState(false);
+  const [recordOpen, setRecordOpen] = useState(false);
+  const recordFactorRef = useRef<string | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   
   // Derive year/month from selection
   const selectedYear = useMemo(() => selectedMonth.split('-')[0], [selectedMonth]);
@@ -112,11 +126,13 @@ export function Dashboard() {
   }, [currentMonthData]);
 
   const handleEditFactor = (factorKey: string) => {
-    console.log('Edit factor:', factorKey);
+    recordFactorRef.current = factorKey;
+    setRecordOpen(true);
   };
 
   const handleViewFactorDetails = (factorKey: string) => {
-    console.log('View factor details:', factorKey);
+  recordFactorRef.current = factorKey;
+  setDetailsOpen(true);
   };
 
   const handleExportData = () => {
@@ -134,6 +150,22 @@ export function Dashboard() {
     fileInputRef.current?.click();
   };
 
+  const handleExportPDF = async () => {
+    try {
+      const blob = await ExportService.toPDFMonthlySummary(data, selectedMonth);
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `lifematrix-${selectedMonth}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
+      alert('No se pudo exportar a PDF');
+    }
+  };
+
   const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -143,7 +175,7 @@ export function Dashboard() {
         return;
       }
       const text = await file.text();
-      const json = JSON.parse(text);
+    const json = JSON.parse(text);
   if (!validateLifeMatrixData(json)) {
         const { report } = validateLifeMatrixDataDetailed(json);
         setDiffActual(json);
@@ -151,11 +183,8 @@ export function Dashboard() {
         setDiffOpen(true);
         return;
       }
-  setData(json);
-  // Auto-seleccionar el mes más reciente disponible en el JSON importado
-  const avail = getAvailableMonthsFromData(createSafeDataShape(json));
-  if (avail.length) setSelectedMonth(avail[0]);
-  alert('Datos importados correctamente.');
+  importBufferRef.current = json;
+  setImportStrategyOpen(true);
     } catch (err) {
       console.error(err);
       alert('No se pudo importar el archivo. Verifica que sea JSON válido.');
@@ -180,6 +209,46 @@ export function Dashboard() {
           expected={buildExpectedShape()}
           actual={diffActual}
           report={diffReport}
+        />
+  <AnnualDialog open={annualOpen} onOpenChange={setAnnualOpen} data={data} year={selectedYear} />
+        <MonthlyRecordForm
+          open={recordOpen}
+          onOpenChange={setRecordOpen}
+          data={data}
+          monthKey={selectedMonth}
+          factorKey={recordFactorRef.current || data.preferences.visibleFactors[0]}
+          onSave={(updated) => setData(updated)}
+        />
+        <FactorDetailsDialog
+          open={detailsOpen}
+          onOpenChange={setDetailsOpen}
+          data={data}
+          factorKey={recordFactorRef.current || data.preferences.visibleFactors[0]}
+          anchorMonth={selectedMonth}
+          onSave={(updated) => setData(updated)}
+        />
+        <SettingsDialog
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          data={data}
+          onSave={(updated) => setData(updated)}
+        />
+        <ImportStrategyDialog
+          open={importStrategyOpen}
+          onOpenChange={setImportStrategyOpen}
+          onConfirm={(strategy) => {
+            const json = importBufferRef.current;
+            if (!json) return setImportStrategyOpen(false);
+            const normalized = normalizeIncomingData(json);
+            const merged = strategy === 'overwrite'
+              ? normalized
+              : PersistenceService.mergeData(createSafeDataShape(data), normalized, strategy);
+            setData(merged);
+            const avail = getAvailableMonthsFromData(createSafeDataShape(merged));
+            if (avail.length) setSelectedMonth(avail[0]);
+            setImportStrategyOpen(false);
+            alert('Datos importados correctamente.');
+          }}
         />
 
         {/* Header */}
@@ -211,6 +280,10 @@ export function Dashboard() {
             <Button variant="outline" size="sm" onClick={handleExportData}>
               <Download className="w-4 h-4 mr-2" />
               Exportar
+            </Button>
+            <Button variant="outline" size="sm" onClick={handleExportPDF}>
+              <Download className="w-4 h-4 mr-2" />
+              PDF mes
             </Button>
             <Button variant="outline" size="sm" onClick={handleImportClick}>
               <Upload className="w-4 h-4 mr-2" />
@@ -353,6 +426,16 @@ export function Dashboard() {
                   data={factorData}
                   onEdit={() => handleEditFactor(factorKey)}
                   onViewDetails={() => handleViewFactorDetails(factorKey)}
+                  onExportCSV={() => {
+                    const csv = ExportService.toCSVByFactorMonth(data, factorKey, selectedMonth);
+                    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `lifematrix-${factorKey}-${selectedMonth}.csv`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
                 />
                 
                 {/* Mini line chart for each factor */}
@@ -378,13 +461,31 @@ export function Dashboard() {
           transition={{ delay: 0.6 }}
           className="flex flex-wrap gap-3"
         >
-          <Button variant="default">
+          <Button variant="default" onClick={() => {
+            recordFactorRef.current = data.preferences.visibleFactors[0];
+            setRecordOpen(true);
+          }}>
             <Plus className="w-4 h-4 mr-2" />
             Registrar mes actual
           </Button>
-          <Button variant="outline">
+          <Button variant="outline" onClick={async () => {
+            try {
+              const res = await fetch('/seed.json');
+              const json = await res.json();
+              importBufferRef.current = json;
+              setImportStrategyOpen(true);
+            } catch {
+              alert('No se pudo cargar el seed.json');
+            }
+          }}>
+            Cargar demo
+          </Button>
+          <Button variant="outline" onClick={() => setAnnualOpen(true)}>
             <Calendar className="w-4 h-4 mr-2" />
             Ver análisis anual
+          </Button>
+          <Button variant="outline" onClick={() => setSettingsOpen(true)}>
+            Configuración
           </Button>
           <Button variant="outline">
             <Target className="w-4 h-4 mr-2" />

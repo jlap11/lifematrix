@@ -77,6 +77,8 @@ export interface Habit {
   frequency: 'daily' | 'weekly' | 'monthly';
   streak: number;
   adherencePct: number;
+  // Optional log per date (YYYY-MM-DD => done)
+  log?: Record<string, boolean>;
 }
 
 export interface Action {

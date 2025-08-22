@@ -1,0 +1,39 @@
+{
+  "meta": { "schemaVersion": "1.0.0", "app": "LifeMatrix", "generatedAt": "2025-08-22T00:00:00.000Z" },
+  "user": { "id": "seed_user", "name": "Demo", "locale": "es-ES", "createdAt": "2025-01-01" },
+  "preferences": {
+    "theme": "dark",
+    "primaryColor": "blue",
+    "language": "es",
+    "factorWeights": { "emotional":1, "financial":1, "professional":1, "mental":1, "social":1, "spiritual":1, "personal":1 },
+    "visibleFactors": ["emotional", "financial", "professional", "mental", "social", "spiritual", "personal"],
+    "notifications": { "weeklySummary": true, "habitReminders": true }
+  },
+  "factorsCatalog": {
+    "emotional": { "label": "Emocional", "description": "", "defaultWeight": 1, "submetrics": ["mood","stress","energy"] },
+    "financial": { "label": "Financiero", "description": "", "defaultWeight": 1, "submetrics": ["income","expenses","savings","debts"] },
+    "professional": { "label": "Profesional", "description": "", "defaultWeight": 1, "submetrics": ["projects","skills","applications"] },
+    "mental": { "label": "Mental", "description": "", "defaultWeight": 1, "submetrics": ["focus","clarity","sleep"] },
+    "social": { "label": "Social", "description": "", "defaultWeight": 1, "submetrics": ["interactions","quality"] },
+    "spiritual": { "label": "Espiritual", "description": "", "defaultWeight": 1, "submetrics": ["practices","meaning"] },
+    "personal": { "label": "Personal", "description": "", "defaultWeight": 1, "submetrics": ["exercise","sleep","nutrition"] }
+  },
+  "records": {
+    "2025": {
+      "05": { "global": { "score": 62, "trend": "up", "variancePct": 3 }, "factors": {
+        "emotional": { "score": 58, "trend": "up", "variancePct": 2, "summary": "", "notes": [], "objectives": [], "habits": [], "actions": [], "blockers": [], "recommendations": ["Respirar diario"], "metrics": {} },
+        "financial": { "score": 65, "trend": "stable", "variancePct": 0, "summary": "", "notes": [], "objectives": [], "habits": [], "actions": [], "blockers": [], "recommendations": [], "metrics": {} }
+      }},
+      "06": { "global": { "score": 67, "trend": "up", "variancePct": 8 }, "factors": {
+        "emotional": { "score": 60, "trend": "stable", "variancePct": 0, "summary": "", "notes": [], "objectives": [], "habits": [], "actions": [], "blockers": [], "recommendations": ["Journaling"], "metrics": {} },
+        "financial": { "score": 70, "trend": "up", "variancePct": 8, "summary": "", "notes": [], "objectives": [], "habits": [], "actions": [], "blockers": [], "recommendations": [], "metrics": {} }
+      }},
+      "07": { "global": { "score": 65, "trend": "down", "variancePct": -3 }, "factors": {
+        "emotional": { "score": 55, "trend": "down", "variancePct": -8, "summary": "", "notes": [], "objectives": [], "habits": [], "actions": [], "blockers": [], "recommendations": [], "metrics": {} },
+        "financial": { "score": 72, "trend": "up", "variancePct": 3, "summary": "", "notes": [], "objectives": [], "habits": [], "actions": [], "blockers": [], "recommendations": [], "metrics": {} }
+      }}
+    }
+  },
+  "analytics": { "monthlyComparisons": { "pairs": [] }, "annualSummary": {} },
+  "sync": { "lastBackupAt": null, "pendingChanges": [] }
+}

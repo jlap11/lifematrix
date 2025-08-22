@@ -1,4 +1,5 @@
 import { LifeMatrixData } from './types';
+import { LifeMatrixCalculator } from './calculator';
 
 export const DEFAULT_FACTORS_CATALOG = {
   emotional: {
@@ -138,6 +139,15 @@ export function formatMonthKey(monthKey: string): string {
   });
 }
 
+export function getPrevMonthKey(monthKey: string): string {
+  const [y, m] = monthKey.split('-').map(Number);
+  const d = new Date(y, m - 1, 1);
+  d.setMonth(d.getMonth() - 1);
+  const yy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${yy}-${mm}`;
+}
+
 // Ensure incoming data has required top-level shape; shallow merge with defaults
 export function createSafeDataShape(data: any): LifeMatrixData {
   const def = createDefaultData();
@@ -166,4 +176,144 @@ export function getAvailableMonthsFromData(data: LifeMatrixData): string[] {
     }
   }
   return months;
+}
+
+// Normalize incoming data: ensure month keys are MM (two digits) and basic shape exists
+export function normalizeIncomingData(input: LifeMatrixData): LifeMatrixData {
+  const data = createSafeDataShape(input);
+  const out: LifeMatrixData = { ...data, records: {} } as LifeMatrixData;
+  const recs: Record<string, any> = (data.records as any) || {};
+
+  const topKeys = Object.keys(recs);
+  const isFlat = topKeys.some(isMonthKey);
+
+  if (isFlat) fillRecordsFromFlat(recs, out);
+  else fillRecordsFromNested(recs, out);
+
+  ensureVisibleFactors(out);
+  ensureCatalogAndVisibility(out);
+  return out;
+}
+
+function isMonthKey(k: string): boolean {
+  return /\d{4}-\d{1,2}/.test(k);
+}
+
+function ensureMonthRecordShape(rec: any, catalog?: Record<string, any>) {
+  if (rec?.factors && rec?.global) return rec;
+  // Try to convert legacy month shape: { emotional: {...}, financial: {...}, ... }
+  if (catalog && isLegacyMonth(rec, catalog)) {
+    return convertLegacyMonth(rec, catalog);
+  }
+  return {
+    factors: rec?.factors || {},
+    global: rec?.global || { score: 0, trend: 'stable', variancePct: 0 }
+  };
+}
+
+function isLegacyMonth(obj: any, catalog: Record<string, any>): boolean {
+  if (!obj || typeof obj !== 'object') return false;
+  return Object.keys(obj).some((k) => Boolean((catalog as any)[k]));
+}
+
+function convertLegacyMonth(obj: any, catalog: Record<string, any>) {
+  const factors: Record<string, any> = {};
+  const factorScores: Record<string, number> = {};
+
+  for (const fk of Object.keys(obj)) {
+    if (!(catalog as any)[fk]) continue;
+    const src = obj[fk] || {};
+    const subs: string[] = ((catalog as any)[fk]?.submetrics as string[]) || [];
+    // Numeric subscores only and <= 100 to avoid financial raw amounts skewing
+    const entries = Object.entries(src).filter(([k, v]) => typeof v === 'number' && v <= 100 && (subs.length === 0 || subs.includes(k)));
+    let score = 0;
+    if (entries.length > 0) {
+      const sum = entries.reduce((acc, [, v]) => acc + (Number(v) || 0), 0);
+      score = Math.round((sum / entries.length) * 10) / 10;
+    } else if (typeof (src as any).score === 'number') {
+      score = Math.max(0, Math.min(100, Number((src as any).score)));
+    } else {
+      score = 0;
+    }
+    const notes: string[] = [];
+    if (typeof (src as any).notes === 'string' && (src as any).notes.trim()) notes.push((src as any).notes.trim());
+    if (Array.isArray((src as any).achievements)) notes.push(...(src as any).achievements.map((s: any) => String(s)));
+    const blockers: string[] = Array.isArray((src as any).challenges) ? (src as any).challenges.map((s: any) => String(s)) : [];
+
+    const subscores: Record<string, number> = {};
+    for (const [k, v] of entries) subscores[k] = Number(v);
+
+    factors[fk] = {
+      score,
+      trend: 'stable',
+      variancePct: 0,
+      summary: '',
+      notes,
+      objectives: [],
+      habits: [],
+      actions: [],
+      blockers,
+      recommendations: [],
+      metrics: { subscores }
+    };
+    factorScores[fk] = score;
+  }
+
+  const globalScore = LifeMatrixCalculator.calculateGlobalScore(factorScores, {} as any);
+  return {
+    factors,
+    global: { score: globalScore, trend: 'stable', variancePct: 0 }
+  };
+}
+
+function fillRecordsFromFlat(recs: Record<string, any>, out: LifeMatrixData) {
+  for (const k of Object.keys(recs)) {
+    if (!isMonthKey(k)) continue;
+    const [yy, mmRaw] = k.split('-');
+    const mm = String(mmRaw).padStart(2, '0');
+    (out.records as any)[yy] = (out.records as any)[yy] || {};
+  (out.records as any)[yy][mm] = ensureMonthRecordShape(recs[k], out.factorsCatalog as any);
+  }
+}
+
+function fillRecordsFromNested(recs: Record<string, any>, out: LifeMatrixData) {
+  for (const y of Object.keys(recs || {})) {
+    const months: Record<string, any> = recs[y] || {};
+    (out.records as any)[y] = (out.records as any)[y] || {};
+    for (const mk of Object.keys(months)) {
+      const mm = String(mk).padStart(2, '0');
+  (out.records as any)[y][mm] = ensureMonthRecordShape(months[mk], out.factorsCatalog as any);
+    }
+  }
+}
+
+function ensureVisibleFactors(out: LifeMatrixData) {
+  if (!out.preferences.visibleFactors || out.preferences.visibleFactors.length === 0) {
+    out.preferences.visibleFactors = Object.keys(out.factorsCatalog || {});
+  }
+}
+
+function ensureCatalogAndVisibility(out: LifeMatrixData) {
+  const found = new Set<string>();
+  for (const y of Object.keys(out.records || {})) {
+    const months = (out.records as any)[y] || {};
+    for (const mm of Object.keys(months)) {
+      const rec = months[mm] || {};
+      for (const fk of Object.keys(rec.factors || {})) found.add(fk);
+    }
+  }
+  for (const fk of Array.from(found)) {
+    if (!out.factorsCatalog[fk]) {
+      out.factorsCatalog[fk] = {
+        label: fk.charAt(0).toUpperCase() + fk.slice(1),
+        description: '',
+        defaultWeight: 1,
+        submetrics: []
+      };
+    }
+    if (!out.preferences.visibleFactors.includes(fk)) {
+      out.preferences.visibleFactors.push(fk);
+      if (!out.preferences.factorWeights[fk]) out.preferences.factorWeights[fk] = 1;
+    }
+  }
 }

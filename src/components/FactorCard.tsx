@@ -6,11 +6,11 @@ import { ScoreCircle } from './ScoreCircle';
 import { Progress } from '@/components/ui/progress';
 import { 
   Target, 
-  TrendUp, 
-  TrendDown, 
+  TrendingUp as TrendUp, 
+  TrendingDown as TrendDown, 
   Calendar,
   Plus
-} from '@phosphor-icons/react';
+} from 'lucide-react';
 import { FactorRecord } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -20,6 +20,7 @@ interface FactorCardProps {
   data?: FactorRecord;
   onEdit?: () => void;
   onViewDetails?: () => void;
+  onExportCSV?: () => void;
   className?: string;
 }
 
@@ -29,8 +30,9 @@ export function FactorCard({
   data, 
   onEdit,
   onViewDetails,
+  onExportCSV,
   className 
-}: FactorCardProps) {
+}: Readonly<FactorCardProps>) {
   const score = data?.score || 0;
   const trend = data?.trend || 'stable';
   const objectives = data?.objectives || [];
@@ -38,7 +40,7 @@ export function FactorCard({
   const hasData = Boolean(data && data.score > 0);
 
   const activeObjectives = objectives.filter(obj => obj.status === 'in_progress');
-  const completedObjectives = objectives.filter(obj => obj.status === 'completed');
+  
 
   return (
     <motion.div
@@ -84,9 +86,9 @@ export function FactorCard({
           {hasData ? (
             <>
               {/* Summary */}
-              {data.summary && (
+        {data?.summary && (
                 <p className="text-sm text-muted-foreground line-clamp-2">
-                  {data.summary}
+          {data?.summary}
                 </p>
               )}
 
@@ -156,6 +158,16 @@ export function FactorCard({
                 >
                   Ver detalles
                 </Button>
+                {onExportCSV && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={onExportCSV}
+                    className="text-xs"
+                  >
+                    Exportar CSV
+                  </Button>
+                )}
               </div>
             </>
           ) : (
