@@ -137,3 +137,33 @@ export function formatMonthKey(monthKey: string): string {
     month: 'long' 
   });
 }
+
+// Ensure incoming data has required top-level shape; shallow merge with defaults
+export function createSafeDataShape(data: any): LifeMatrixData {
+  const def = createDefaultData();
+  const d = data || {};
+  return {
+    ...def,
+    ...d,
+    meta: { ...def.meta, ...(d.meta || {}) },
+    user: { ...def.user, ...(d.user || {}) },
+    preferences: { ...def.preferences, ...(d.preferences || {}) },
+    factorsCatalog: d.factorsCatalog || def.factorsCatalog,
+    records: d.records || {},
+    analytics: { ...def.analytics, ...(d.analytics || {}) },
+    sync: { ...def.sync, ...(d.sync || {}) }
+  } as LifeMatrixData;
+}
+
+// Return month keys like YYYY-MM sorted desc (latest first)
+export function getAvailableMonthsFromData(data: LifeMatrixData): string[] {
+  const months: string[] = [];
+  const years = Object.keys(data.records || {}).filter(Boolean).sort((a, b) => Number(b) - Number(a));
+  for (const y of years) {
+    const ms = Object.keys((data.records as any)[y] || {}).filter(Boolean).sort((a, b) => Number(b) - Number(a));
+    for (const m of ms) {
+      months.push(`${y}-${String(m).padStart(2, '0')}`);
+    }
+  }
+  return months;
+}

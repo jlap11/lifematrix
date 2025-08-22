@@ -5,48 +5,60 @@ import { useLocalStorage } from '@/hooks/use-local-storage';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { 
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { ScoreCircle } from '@/components/ScoreCircle';
 import { FactorCard } from '@/components/FactorCard';
 import { MiniLineChart } from '@/components/MiniLineChart';
-import { LifeMatrixData, FactorRecord } from '@/lib/types';
-import { createDefaultData, getCurrentMonthKey, getCurrentYearKey, formatMonthKey, validateLifeMatrixData } from '@/lib/data-utils';
+import { LifeMatrixData } from '@/lib/types';
+import { createDefaultData, getCurrentMonthKey, formatMonthKey, validateLifeMatrixData, getAvailableMonthsFromData, createSafeDataShape } from '@/lib/data-utils';
 import { validateLifeMatrixDataDetailed, buildExpectedShape } from '@/lib/validation';
 import { JsonDiffDialog } from '@/components/JsonDiffDialog';
 import { LifeMatrixCalculator } from '@/lib/calculator';
 import { 
-  TrendUp, 
-  TrendDown, 
-  Calendar, 
+  TrendingUp as TrendUp,
+  TrendingDown as TrendDown,
+  Calendar,
   Target,
   Plus,
-  DownloadSimple,
-  UploadSimple
-} from '@phosphor-icons/react';
+  Download,
+  Upload
+} from 'lucide-react';
  
 
 export function Dashboard() {
   const [data, setData] = useLocalStorage<LifeMatrixData>('lifematrix-data', createDefaultData());
-  const selectedMonth = getCurrentMonthKey();
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    const current = getCurrentMonthKey();
+    const avail = getAvailableMonthsFromData(createSafeDataShape(data));
+    if (avail.includes(current)) return current;
+    return avail[0] ?? current;
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [diffOpen, setDiffOpen] = useState(false);
   const [diffActual, setDiffActual] = useState<any>(null);
   const [diffReport, setDiffReport] = useState<any>(null);
   
-  const currentYear = getCurrentYearKey();
-  const currentMonth = getCurrentMonthKey();
-  
+  // Derive year/month from selection
+  const selectedYear = useMemo(() => selectedMonth.split('-')[0], [selectedMonth]);
+  const selectedMM = useMemo(() => selectedMonth.split('-')[1], [selectedMonth]);
+
   // Get current month data
   const currentMonthData = useMemo(() => {
-    return data.records[currentYear]?.[selectedMonth.split('-')[1]];
-  }, [data, currentYear, selectedMonth]);
+    return data.records[selectedYear]?.[selectedMM];
+  }, [data, selectedYear, selectedMM]);
 
   // Calculate global score for current month
   const globalScore = useMemo(() => {
     if (!currentMonthData?.factors) return 0;
     
     const factorScores: Record<string, number> = {};
-    const factors = currentMonthData.factors as Record<string, FactorRecord>;
-    Object.entries(factors).forEach(([key, factor]) => {
+  Object.entries(currentMonthData.factors).forEach(([key, factor]) => {
       factorScores[key] = factor.score;
     });
     
@@ -66,7 +78,8 @@ export function Dashboard() {
 
     // Generate last 6 months
     for (let i = 5; i >= 0; i--) {
-      const date = new Date();
+    const [y, m] = selectedMonth.split('-');
+    const date = new Date(Number(y), Number(m) - 1, 1);
       date.setMonth(date.getMonth() - i);
       const monthKey = String(date.getMonth() + 1).padStart(2, '0');
       const yearKey = date.getFullYear().toString();
@@ -84,15 +97,14 @@ export function Dashboard() {
     }
     
   return months;
-  }, [data]);
+  }, [data, selectedMonth]);
 
   // Get recommendations
   const recommendations = useMemo(() => {
     if (!currentMonthData?.factors) return [];
     
     const allRecommendations: string[] = [];
-    const factors = currentMonthData.factors as Record<string, FactorRecord>;
-    Object.values(factors).forEach((f) => {
+  Object.values(currentMonthData.factors).forEach((f) => {
       allRecommendations.push(...(f.recommendations || []));
     });
     
@@ -132,14 +144,17 @@ export function Dashboard() {
       }
       const text = await file.text();
       const json = JSON.parse(text);
-      if (!validateLifeMatrixData(json)) {
+  if (!validateLifeMatrixData(json)) {
         const { report } = validateLifeMatrixDataDetailed(json);
         setDiffActual(json);
         setDiffReport(report);
         setDiffOpen(true);
         return;
       }
-      setData(json);
+  setData(json);
+  // Auto-seleccionar el mes más reciente disponible en el JSON importado
+  const avail = getAvailableMonthsFromData(createSafeDataShape(json));
+  if (avail.length) setSelectedMonth(avail[0]);
   alert('Datos importados correctamente.');
     } catch (err) {
       console.error(err);
@@ -175,18 +190,30 @@ export function Dashboard() {
         >
           <div>
             <h1 className="text-3xl font-bold mb-2">LifeMatrix</h1>
-            <p className="text-muted-foreground">
-              Dashboard personal - {formatMonthKey(currentMonth)}
-            </p>
+            <div className="text-muted-foreground flex items-center gap-3">
+              <span>Dashboard personal</span>
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger className="w-44 h-8 text-sm">
+                  <SelectValue placeholder="Mes" />
+                </SelectTrigger>
+                <SelectContent className="max-h-64">
+                  {getAvailableMonthsFromData(createSafeDataShape(data)).map((mk) => (
+                    <SelectItem key={mk} value={mk} className="text-sm">
+                      {formatMonthKey(mk)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           
           <div className="flex gap-3 mt-4 md:mt-0">
             <Button variant="outline" size="sm" onClick={handleExportData}>
-              <DownloadSimple className="w-4 h-4 mr-2" />
+              <Download className="w-4 h-4 mr-2" />
               Exportar
             </Button>
             <Button variant="outline" size="sm" onClick={handleImportClick}>
-              <UploadSimple className="w-4 h-4 mr-2" />
+              <Upload className="w-4 h-4 mr-2" />
               Importar
             </Button>
           </div>
@@ -243,7 +270,7 @@ export function Dashboard() {
             <CardContent>
               <div className="text-2xl font-bold">
                 {currentMonthData ?
-                  (Object.values(currentMonthData.factors) as FactorRecord[])
+                  Object.values(currentMonthData.factors)
                     .flatMap(f => f.objectives)
                     .filter(obj => obj.status === 'in_progress').length 
                   : 0
@@ -263,7 +290,7 @@ export function Dashboard() {
             <CardContent>
               <div className="text-2xl font-bold">
                 {currentMonthData ?
-                  (Object.values(currentMonthData.factors) as FactorRecord[])
+                  Object.values(currentMonthData.factors)
                     .flatMap(f => f.habits).length 
                   : 0
                 }
