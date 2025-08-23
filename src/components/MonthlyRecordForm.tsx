@@ -37,7 +37,10 @@ export function MonthlyRecordForm({ open, onOpenChange, data, monthKey, factorKe
     onSave(copy);
     if (isApiMode()) {
       try {
-        await Api.putRecordByMonth(monthKey, { factors: { [factorKey]: factor } });
+        const ifUnmodified = (data as any).recordsMeta?.[y]?.[m]?.updatedAt || undefined;
+        // Backend espera arreglo de factores
+        const payload = { factors: [ { factorKey, ...('score' in factor ? { score: factor.score } : {}), ...(factor.summary ? { summary: factor.summary } : {}), metrics: factor.metrics || {} } ] };
+        await Api.putRecordByMonth(monthKey, payload, ifUnmodified);
       } catch (e) {
         console.error('API save month failed', e);
       }

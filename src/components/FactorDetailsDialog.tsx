@@ -61,9 +61,9 @@ export function FactorDetailsDialog({ open, onOpenChange, data, factorKey, ancho
       r.notes = [...(r.notes || []), noteText.trim()];
     });
     if (isApiMode()) {
-      const [y, m] = anchorMonth.split('-');
-      const recId = `${y}-${m}`; // asunción: API permite usar year-month como idempotent key
-      Api.addNote(recId, factorKey, noteText.trim()).catch(err => console.error('API addNote failed', err));
+      Api.findRecordIdByMonth(anchorMonth)
+        .then(recId => recId ? Api.addNote(recId, factorKey, noteText.trim()) : null)
+        .catch(err => console.error('API addNote failed', err));
     }
     setNoteText('');
   }
@@ -76,9 +76,8 @@ export function FactorDetailsDialog({ open, onOpenChange, data, factorKey, ancho
       r.objectives = [...(r.objectives || []), obj];
     });
     if (isApiMode()) {
-      const [y, m] = anchorMonth.split('-');
-      const recId = `${y}-${m}`;
-      Api.upsertObjective(recId, factorKey, { title: objTitle.trim(), status: 'not_started', progressPct: 0, due: objDue || '' })
+      Api.findRecordIdByMonth(anchorMonth)
+        .then(recId => recId ? Api.upsertObjective(recId, factorKey, { title: objTitle.trim(), status: 'not_started', progressPct: 0, due: objDue || '' }) : null)
         .catch(err => console.error('API upsertObjective failed', err));
     }
     setObjTitle(''); setObjDue('');
@@ -90,9 +89,9 @@ export function FactorDetailsDialog({ open, onOpenChange, data, factorKey, ancho
       r.objectives = (r.objectives || []).map(o => o.id === id ? { ...o, ...patch } : o);
     });
     if (isApiMode()) {
-      const [y, m] = anchorMonth.split('-');
-      const recId = `${y}-${m}`;
-      Api.upsertObjective(recId, factorKey, { id, ...patch }).catch(err => console.error('API updateObjective failed', err));
+      Api.findRecordIdByMonth(anchorMonth)
+        .then(recId => recId ? Api.upsertObjective(recId, factorKey, { id, ...patch }) : null)
+        .catch(err => console.error('API updateObjective failed', err));
     }
   }
 
@@ -102,9 +101,9 @@ export function FactorDetailsDialog({ open, onOpenChange, data, factorKey, ancho
       r.objectives = (r.objectives || []).filter(o => o.id !== id);
     });
     if (isApiMode()) {
-      const [y, m] = anchorMonth.split('-');
-      const recId = `${y}-${m}`;
-      Api.deleteObjective(recId, factorKey, id).catch(err => console.error('API deleteObjective failed', err));
+      Api.findRecordIdByMonth(anchorMonth)
+        .then(recId => recId ? Api.deleteObjective(recId, factorKey, id) : null)
+        .catch(err => console.error('API deleteObjective failed', err));
     }
   }
 
@@ -116,9 +115,9 @@ export function FactorDetailsDialog({ open, onOpenChange, data, factorKey, ancho
       r.habits = [...(r.habits || []), hb];
     });
     if (isApiMode()) {
-      const [y, m] = anchorMonth.split('-');
-      const recId = `${y}-${m}`;
-      Api.upsertHabit(recId, factorKey, { name: habitName.trim(), frequency: habitFreq }).catch(err => console.error('API upsertHabit failed', err));
+      Api.findRecordIdByMonth(anchorMonth)
+        .then(recId => recId ? Api.upsertHabit(recId, factorKey, { name: habitName.trim(), frequency: habitFreq }) : null)
+        .catch(err => console.error('API upsertHabit failed', err));
     }
     setHabitName(''); setHabitFreq('daily');
   }
@@ -145,9 +144,9 @@ export function FactorDetailsDialog({ open, onOpenChange, data, factorKey, ancho
       r.habits = (r.habits || []).filter(h => h.id !== id);
     });
     if (isApiMode()) {
-      const [y, m] = anchorMonth.split('-');
-      const recId = `${y}-${m}`;
-      Api.deleteHabit(recId, factorKey, id).catch(err => console.error('API deleteHabit failed', err));
+      Api.findRecordIdByMonth(anchorMonth)
+        .then(recId => recId ? Api.deleteHabit(recId, factorKey, id) : null)
+        .catch(err => console.error('API deleteHabit failed', err));
     }
   }
 
@@ -317,7 +316,7 @@ function recomputeHabitStats(h: Habit, monthKey: string) {
   h.streak = streak;
 }
 
-function MonthHeatmap({ monthKey, log, onToggle }: { monthKey: string; log: Record<string, boolean>; onToggle: (day: number) => void }) {
+function MonthHeatmap({ monthKey, log, onToggle }: Readonly<{ monthKey: string; log: Record<string, boolean>; onToggle: (day: number) => void }>) {
   const [y, m] = monthKey.split('-').map(Number);
   const days = new Date(y, m, 0).getDate();
   const cells: any[] = [];
