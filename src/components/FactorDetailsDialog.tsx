@@ -6,6 +6,8 @@ import { useMemo, useState } from 'react';
 import type { LifeMatrixData, Objective, Habit, FactorRecord } from '@/lib/types';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis } from 'recharts';
 import { Plus, Trash2 } from 'lucide-react';
+import { isApiMode } from '@/lib/config';
+import { Api } from '@/lib/api-client';
 
 type Props = {
   open: boolean;
@@ -58,6 +60,11 @@ export function FactorDetailsDialog({ open, onOpenChange, data, factorKey, ancho
       const r = ensureFactorRecord(c, factorKey, anchorMonth);
       r.notes = [...(r.notes || []), noteText.trim()];
     });
+    if (isApiMode()) {
+      const [y, m] = anchorMonth.split('-');
+      const recId = `${y}-${m}`; // asunción: API permite usar year-month como idempotent key
+      Api.addNote(recId, factorKey, noteText.trim()).catch(err => console.error('API addNote failed', err));
+    }
     setNoteText('');
   }
 
@@ -68,6 +75,12 @@ export function FactorDetailsDialog({ open, onOpenChange, data, factorKey, ancho
       const obj: Objective = { id: `obj_${Date.now()}`, title: objTitle.trim(), status: 'not_started', progressPct: 0, due: objDue || '' };
       r.objectives = [...(r.objectives || []), obj];
     });
+    if (isApiMode()) {
+      const [y, m] = anchorMonth.split('-');
+      const recId = `${y}-${m}`;
+      Api.upsertObjective(recId, factorKey, { title: objTitle.trim(), status: 'not_started', progressPct: 0, due: objDue || '' })
+        .catch(err => console.error('API upsertObjective failed', err));
+    }
     setObjTitle(''); setObjDue('');
   }
 
@@ -76,6 +89,11 @@ export function FactorDetailsDialog({ open, onOpenChange, data, factorKey, ancho
       const r = ensureFactorRecord(c, factorKey, anchorMonth);
       r.objectives = (r.objectives || []).map(o => o.id === id ? { ...o, ...patch } : o);
     });
+    if (isApiMode()) {
+      const [y, m] = anchorMonth.split('-');
+      const recId = `${y}-${m}`;
+      Api.upsertObjective(recId, factorKey, { id, ...patch }).catch(err => console.error('API updateObjective failed', err));
+    }
   }
 
   function removeObjective(id: string) {
@@ -83,6 +101,11 @@ export function FactorDetailsDialog({ open, onOpenChange, data, factorKey, ancho
       const r = ensureFactorRecord(c, factorKey, anchorMonth);
       r.objectives = (r.objectives || []).filter(o => o.id !== id);
     });
+    if (isApiMode()) {
+      const [y, m] = anchorMonth.split('-');
+      const recId = `${y}-${m}`;
+      Api.deleteObjective(recId, factorKey, id).catch(err => console.error('API deleteObjective failed', err));
+    }
   }
 
   function addHabit() {
@@ -92,6 +115,11 @@ export function FactorDetailsDialog({ open, onOpenChange, data, factorKey, ancho
       const hb: Habit = { id: `hb_${Date.now()}`, name: habitName.trim(), frequency: habitFreq, streak: 0, adherencePct: 0, log: {} };
       r.habits = [...(r.habits || []), hb];
     });
+    if (isApiMode()) {
+      const [y, m] = anchorMonth.split('-');
+      const recId = `${y}-${m}`;
+      Api.upsertHabit(recId, factorKey, { name: habitName.trim(), frequency: habitFreq }).catch(err => console.error('API upsertHabit failed', err));
+    }
     setHabitName(''); setHabitFreq('daily');
   }
 
@@ -106,6 +134,9 @@ export function FactorDetailsDialog({ open, onOpenChange, data, factorKey, ancho
       hb.log[date] = !hb.log[date];
       recomputeHabitStats(hb, mk);
     });
+    if (isApiMode()) {
+      Api.putHabitLog(habitId, date, true).catch(err => console.error('API putHabitLog failed', err));
+    }
   }
 
   function removeHabit(id: string) {
@@ -113,6 +144,11 @@ export function FactorDetailsDialog({ open, onOpenChange, data, factorKey, ancho
       const r = ensureFactorRecord(c, factorKey, anchorMonth);
       r.habits = (r.habits || []).filter(h => h.id !== id);
     });
+    if (isApiMode()) {
+      const [y, m] = anchorMonth.split('-');
+      const recId = `${y}-${m}`;
+      Api.deleteHabit(recId, factorKey, id).catch(err => console.error('API deleteHabit failed', err));
+    }
   }
 
   return (

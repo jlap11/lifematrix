@@ -4,6 +4,8 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useState } from 'react';
 import { LifeMatrixData } from '@/lib/types';
+import { isApiMode } from '@/lib/config';
+import { Api } from '@/lib/api-client';
 
 type Props = {
   open: boolean;
@@ -21,7 +23,7 @@ export function MonthlyRecordForm({ open, onOpenChange, data, monthKey, factorKe
   });
   const [notes, setNotes] = useState<string>('');
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const [y, m] = monthKey.split('-');
     const copy: LifeMatrixData = JSON.parse(JSON.stringify(data));
     if (!copy.records[y]) (copy.records as any)[y] = {} as any;
@@ -33,6 +35,13 @@ export function MonthlyRecordForm({ open, onOpenChange, data, monthKey, factorKe
     if (notes.trim()) factor.notes = [...(factor.notes || []), notes.trim()];
     copy.records[y][m].factors[factorKey] = factor;
     onSave(copy);
+    if (isApiMode()) {
+      try {
+        await Api.putRecordByMonth(monthKey, { factors: { [factorKey]: factor } });
+      } catch (e) {
+        console.error('API save month failed', e);
+      }
+    }
     onOpenChange(false);
   };
 

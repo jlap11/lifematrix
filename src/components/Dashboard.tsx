@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { motion } from 'framer-motion';
 import { useLocalStorage } from '@/hooks/use-local-storage';
@@ -36,6 +36,9 @@ import { ExportService } from '@/services/ExportService';
 import { MonthlyRecordForm } from '@/components/MonthlyRecordForm';
 import { FactorDetailsDialog } from '@/components/FactorDetailsDialog';
 import { SettingsDialog } from '@/components/SettingsDialog';
+import { isApiMode } from '@/lib/config';
+import { DataSource } from '@/lib/data-source';
+import { Api } from '@/lib/api-client';
  
 
 export function Dashboard() {
@@ -57,6 +60,22 @@ export function Dashboard() {
   const recordFactorRef = useRef<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Load from API in api mode
+  useEffect(() => {
+    if (!isApiMode()) return;
+    (async () => {
+      try {
+        const initial = await DataSource.loadInitial();
+        setData(initial);
+        const avail = getAvailableMonthsFromData(createSafeDataShape(initial));
+        if (avail.length) setSelectedMonth(avail[0]);
+      } catch (e) {
+        console.error('API load failed', e);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   
   // Derive year/month from selection
   const selectedYear = useMemo(() => selectedMonth.split('-')[0], [selectedMonth]);
@@ -135,7 +154,24 @@ export function Dashboard() {
   setDetailsOpen(true);
   };
 
-  const handleExportData = () => {
+  const handleExportData = async () => {
+    if (isApiMode()) {
+      try {
+        const json = await Api.exportAll();
+        const dataStr = JSON.stringify(json, null, 2);
+        const dataBlob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(dataBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `lifematrix-export-${new Date().toISOString().split('T')[0]}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        console.error(e);
+        alert('No se pudo exportar');
+      }
+      return;
+    }
     const dataStr = JSON.stringify(data, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(dataBlob);
@@ -152,6 +188,16 @@ export function Dashboard() {
 
   const handleExportPDF = async () => {
     try {
+      if (isApiMode()) {
+        const blob = await Api.exportPdf(selectedMonth);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `lifematrix-${selectedMonth}.pdf`;
+        a.click();
+        URL.revokeObjectURL(url);
+        return;
+      }
       const blob = await ExportService.toPDFMonthlySummary(data, selectedMonth);
       if (!blob) return;
       const url = URL.createObjectURL(blob);
@@ -175,7 +221,7 @@ export function Dashboard() {
         return;
       }
       const text = await file.text();
-    const json = JSON.parse(text);
+      const json = JSON.parse(text);
   if (!validateLifeMatrixData(json)) {
         const { report } = validateLifeMatrixDataDetailed(json);
         setDiffActual(json);
@@ -183,8 +229,13 @@ export function Dashboard() {
         setDiffOpen(true);
         return;
       }
-  importBufferRef.current = json;
-  setImportStrategyOpen(true);
+      if (isApiMode()) {
+        importBufferRef.current = json;
+        setImportStrategyOpen(true);
+      } else {
+        importBufferRef.current = json;
+        setImportStrategyOpen(true);
+      }
     } catch (err) {
       console.error(err);
       alert('No se pudo importar el archivo. Verifica que sea JSON válido.');
@@ -236,18 +287,34 @@ export function Dashboard() {
         <ImportStrategyDialog
           open={importStrategyOpen}
           onOpenChange={setImportStrategyOpen}
-          onConfirm={(strategy) => {
+          onConfirm={async (strategy) => {
             const json = importBufferRef.current;
             if (!json) return setImportStrategyOpen(false);
             const normalized = normalizeIncomingData(json);
-            const merged = strategy === 'overwrite'
-              ? normalized
-              : PersistenceService.mergeData(createSafeDataShape(data), normalized, strategy);
-            setData(merged);
-            const avail = getAvailableMonthsFromData(createSafeDataShape(merged));
-            if (avail.length) setSelectedMonth(avail[0]);
-            setImportStrategyOpen(false);
-            alert('Datos importados correctamente.');
+            if (isApiMode()) {
+              try {
+                await Api.importData(normalized, strategy);
+                const refreshed = await DataSource.loadInitial();
+                setData(refreshed);
+                const avail = getAvailableMonthsFromData(createSafeDataShape(refreshed));
+                if (avail.length) setSelectedMonth(avail[0]);
+                alert('Datos importados correctamente.');
+              } catch (e) {
+                console.error(e);
+                alert('Fallo la importación en el servidor');
+              } finally {
+                setImportStrategyOpen(false);
+              }
+            } else {
+              const merged = strategy === 'overwrite'
+                ? normalized
+                : PersistenceService.mergeData(createSafeDataShape(data), normalized, strategy);
+              setData(merged);
+              const avail = getAvailableMonthsFromData(createSafeDataShape(merged));
+              if (avail.length) setSelectedMonth(avail[0]);
+              setImportStrategyOpen(false);
+              alert('Datos importados correctamente.');
+            }
           }}
         />
 
@@ -427,14 +494,33 @@ export function Dashboard() {
                   onEdit={() => handleEditFactor(factorKey)}
                   onViewDetails={() => handleViewFactorDetails(factorKey)}
                   onExportCSV={() => {
-                    const csv = ExportService.toCSVByFactorMonth(data, factorKey, selectedMonth);
-                    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `lifematrix-${factorKey}-${selectedMonth}.csv`;
-                    a.click();
-                    URL.revokeObjectURL(url);
+                    const download = async () => {
+                      try {
+                        if (isApiMode()) {
+                          const csv = await Api.exportCsv(factorKey, selectedMonth);
+                          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `lifematrix-${factorKey}-${selectedMonth}.csv`;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                          return;
+                        }
+                        const csv = ExportService.toCSVByFactorMonth(data, factorKey, selectedMonth);
+                        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `lifematrix-${factorKey}-${selectedMonth}.csv`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      } catch (e) {
+                        console.error(e);
+                        alert('No se pudo exportar CSV');
+                      }
+                    };
+                    void download();
                   }}
                 />
                 
