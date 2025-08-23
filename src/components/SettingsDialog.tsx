@@ -4,6 +4,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { useMemo, useState } from 'react';
 import type { LifeMatrixData } from '@/lib/types';
+import { isApiMode } from '@/lib/config';
+import { DataSource } from '@/lib/data-source';
 
 type Props = {
   open: boolean;
@@ -26,6 +28,10 @@ export function SettingsDialog({ open, onOpenChange, data, onSave }: Readonly<Pr
     copy.preferences.factorWeights = { ...copy.preferences.factorWeights, ...weights };
     copy.preferences.visibleFactors = keys.filter(k => visible[k]);
     onSave(copy);
+    if (isApiMode()) {
+      // Guardar preferencias en backend si está disponible
+      void DataSource.saveAll(copy);
+    }
     onOpenChange(false);
   }
 

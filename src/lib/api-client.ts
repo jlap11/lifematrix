@@ -58,7 +58,14 @@ async function httpText(path: string, opts: HttpOptions = {}): Promise<string> {
 export type MonthKey = string; // YYYY-MM
 
 export const Api = {
+  // Auth (cookie-based recommended; credentials: 'include')
+  register: (email: string, password: string) => http('/v1/auth/register', { method: 'POST', body: { email, password } }),
+  login: (email: string, password: string) => http('/v1/auth/login', { method: 'POST', body: { email, password } }),
+  refresh: () => http('/v1/auth/refresh', { method: 'POST' }),
+  logout: () => http('/v1/auth/logout', { method: 'POST' }),
+
   // Preferences
+  // NOTE: El backend aún puede no exponer estas rutas; se usan de forma opcional
   getPreferences: () => http('/v1/me/preferences'),
   updatePreferences: (data: any) => http('/v1/me/preferences', { method: 'PATCH', body: data }),
 
